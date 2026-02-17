@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanji Master - Học Từ Vựng Kiểu Quizlet</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* --- SỬA LỖI FLASHCARD (Cố định chiều cao để tránh nhảy) --- */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+
+        /* Container có chiều cao cố định */
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+            transform-style: preserve-3d;
+            cursor: pointer;
+            will-change: transform;
+        }
+
+        .flip-card-inner.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+        /* Style chung cho cả 2 mặt - CỐ ĐỊNH CHIỀU CAO */
+        .flip-card-front, .flip-card-back {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 2rem 1.5rem;
+            background-color: white;
+            border: 1px solid #e5e7eb;
+            color: #1f2937;
+            overflow: hidden; /* Quan trọng để tránh nội dung tràn ra */
+        }
+
+        .flip-card-front {
+            z-index: 2;
+            transform: rotateY(0deg);
+        }
+
+        .flip-card-back {
+            transform: rotateY(180deg);
+            z-index: 1;
+        }
+
+        /* Phần nội dung bên trong có thể scroll nếu quá dài */
+        .card-content-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 0.5rem;
+        }
+
+        /* Animation cho Quiz */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Quiz Option Button Styles */
+        .quiz-option {
+            transition: all 0.2s;
+        }
+        .quiz-option:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* Hiệu ứng mờ dần cho 50/50 */
+        .option-hidden {
+            opacity: 0.1;
+            pointer-events: none;
+        }
+
+        /* Hiệu ứng gợi ý đáp án */
+        .option-hint {
+            border-color: #facc15 !important; /* Yellow-400 */
+            background-color: #fef9c3 !important; /* Yellow-100 */
+            box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.3) !important;
+            transform: scale(1.02);
+        }
+
+        /* Type Badge Styles */
+        .badge-kanji {
+            background-color: #fce7f3;
+            color: #be185d;
+            border: 1px solid #fbcfe8;
+        }
+        .badge-vocab {
+            background-color: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-gray-800">
+
+<!-- Header -->
+<header class="bg-indigo-600 text-white shadow-md z-10 flex-shrink-0">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <i class="fas fa-torii-gate"></i> Kanji Master
+        </h1>
+        <nav class="flex gap-4 text-sm font-medium">
+            <button onclick="app.switchView('import')" class="hover:text-indigo-200 transition nav-btn" id="nav-import"><i class="fas fa-file-import"></i> Nhập Liệu</button>
+            <button onclick="app.switchView('flashcard')" class="hover:text-indigo-200 transition nav-btn" id="nav-flashcard"><i class="fas fa-layer-group"></i> Flashcards</button>
+            <button onclick="app.switchView('quiz')" class="hover:text-indigo-200 transition nav-btn" id="nav-quiz"><i class="fas fa-pen-nib"></i> Kiểm Tra</button>
+            <button onclick="app.switchView('stats')" class="hover:text-indigo-200 transition nav-btn" id="nav-stats"><i class="fas fa-database"></i> Dữ Liệu</button>
+        </nav>
+    </div>
+</header>
+
+<!-- Main Content Area -->
+<main class="flex-1 overflow-auto p-4 md:p-6 relative bg-gray-50">
+
+    <!-- VIEW: IMPORT (Nhập liệu) -->
+    <div id="view-import" class="view-section max-w-4xl mx-auto space-y-6 fade-in">
+        <div class="bg-white p-6 rounded-xl shadow-sm">
+            <h2 class="text-2xl font-bold mb-4 text-gray-700 border-b pb-2">Tạo bộ dữ liệu mới</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div class="md:col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Loại dữ liệu</label>
+                    <div class="flex gap-4 bg-gray-50 p-2 rounded border border-gray-200">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="import-type" value="vocab" checked class="text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-medium">Từ vựng</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="import-type" value="kanji" class="text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-medium">Kanji</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tiêu đề (Tùy chọn)</label>
+                    <input type="text" id="set-title" placeholder="Ví dụ: Bài 1" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                </div>
+                <div class="md:col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Dấu ngăn cách</label>
+                    <select id="delimiter-select" class="p-2 border border-gray-300 rounded w-full text-sm">
+                        <option value="tab">Tab (Excel/Quizlet)</option>
+                        <option value="-">Gạch ngang (-)</option>
+                        <option value=",">Dấu phẩy (,)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nhập dữ liệu (Kanji [Tab] Hiragana [Tab] Nghĩa)</label>
+                <textarea id="raw-input" class="w-full h-64 p-3 border border-gray-300 rounded font-mono text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="引越し	ひっこし	Chuyển nhà&#10;学生	がくせい	Học sinh"></textarea>
+                <p class="text-xs text-gray-500 mt-1">Mẹo: Chọn "Kanji" hoặc "Từ vựng" ở trên để phân loại khi học.</p>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="importer.processImport()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded shadow transition font-medium">
+                    <i class="fas fa-save mr-1"></i> Lưu vào Database
+                </button>
+                <button onclick="importer.clearInput()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded shadow transition">
+                    <i class="fas fa-eraser mr-1"></i> Xóa trắng
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: FLASHCARDS -->
+    <div id="view-flashcard" class="view-section hidden max-w-2xl mx-auto h-full flex flex-col items-center pt-6 pb-6 fade-in">
+
+        <!-- Filter Controls -->
+        <div class="w-full flex justify-center mb-6 z-10">
+            <div class="bg-white px-5 py-2 rounded-full shadow-md border border-indigo-100 flex items-center gap-3">
+                <span class="text-sm font-bold text-gray-500"><i class="fas fa-filter text-indigo-500"></i> Đang học:</span>
+                <select id="flashcard-filter" onchange="flashcard.changeFilter(this.value)" class="text-sm border-none focus:ring-0 text-indigo-700 font-bold bg-transparent cursor-pointer outline-none">
+                    <option value="all">Tất cả (All)</option>
+                    <option value="vocab">Từ vựng</option>
+                    <option value="kanji">Kanji</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Flashcard Container - CỐ ĐỊNH CHIỀU CAO -->
+        <div id="flashcard-container" class="w-full aspect-[3/2] md:aspect-[5/3] perspective-1000 mb-8 flex-shrink-0 relative z-0">
+            <div id="card-inner" class="flip-card-inner" onclick="flashcard.flip()">
+                <!-- Front -->
+                <div class="flip-card-front">
+                    <!-- Type Badge -->
+                    <div id="card-type-badge" class="absolute top-4 left-4 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider shadow-sm">Type</div>
+
+                    <div class="absolute top-4 right-4 text-gray-300 text-sm">
+                        <i class="fas fa-sync-alt"></i> Nhấn để lật
+                    </div>
+
+                    <!-- Wrapper cho nội dung -->
+                    <div class="card-content-wrapper">
+                        <h2 id="card-term" class="text-4xl md:text-5xl font-bold text-gray-800 text-center select-none">Loading...</h2>
+                    </div>
+                </div>
+
+                <!-- Back -->
+                <div class="flip-card-back">
+                    <div class="absolute top-4 right-4 text-gray-300 text-sm">
+                        <i class="fas fa-font"></i>
+                    </div>
+
+                    <!-- Wrapper cho nội dung có thể scroll -->
+                    <div class="card-content-wrapper">
+                        <div id="card-def" class="text-xl md:text-2xl font-medium text-center">...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex-1 flex flex-col justify-start items-center w-full">
+            <div class="flex items-center gap-6 w-full justify-center mb-6">
+                <button onclick="flashcard.prev()" class="w-14 h-14 rounded-full bg-white text-gray-600 shadow-md hover:bg-gray-100 flex items-center justify-center text-xl transition transform hover:scale-105 active:scale-95">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+
+                <div class="text-center min-w-[80px]">
+                    <span id="fc-progress" class="font-bold text-gray-500 text-lg">0 / 0</span>
+                </div>
+
+                <button onclick="flashcard.next()" class="w-14 h-14 rounded-full bg-white text-gray-600 shadow-md hover:bg-gray-100 flex items-center justify-center text-xl transition transform hover:scale-105 active:scale-95">
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+
+            <div>
+                <button onclick="flashcard.markLearned()" id="btn-mark-learned" class="px-6 py-2.5 rounded-full border-2 border-green-500 text-green-600 hover:bg-green-50 transition font-medium flex items-center gap-2 shadow-sm">
+                    <i class="fas fa-check"></i> Đánh dấu đã thuộc
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: QUIZ (Kiểm tra - Trắc nghiệm) -->
+    <div id="view-quiz" class="view-section hidden max-w-3xl mx-auto py-6 fade-in">
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden relative min-h-[500px] flex flex-col">
+            <!-- Header Quiz -->
+            <div class="bg-gray-50 px-6 py-4 border-b flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-gray-700 text-lg">Trắc nghiệm</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-500">Streak: 3</span>
+                        <div class="bg-indigo-100 rounded-full px-3 py-1 text-xs font-bold text-indigo-600" id="quiz-progress">0 left</div>
+                    </div>
+                </div>
+
+                <!-- Controls Row -->
+                <div class="flex gap-4 flex-wrap">
+                    <div class="flex items-center gap-2 bg-white border rounded px-2 py-1 shadow-sm">
+                        <span class="text-xs text-gray-500 uppercase font-bold">Chế độ:</span>
+                        <select id="quiz-mode-select" onchange="quiz.changeMode(this.value)" class="text-sm border-none p-0 focus:ring-0 text-gray-700 font-medium cursor-pointer">
+                            <option value="def_to_term">Hỏi Nghĩa - Chọn Từ</option>
+                            <option value="term_to_def">Hỏi Từ - Chọn Nghĩa</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-2 bg-white border rounded px-2 py-1 shadow-sm">
+                        <span class="text-xs text-gray-500 uppercase font-bold">Lọc:</span>
+                        <select id="quiz-filter-select" onchange="quiz.changeFilter(this.value)" class="text-sm border-none p-0 focus:ring-0 text-indigo-700 font-medium cursor-pointer">
+                            <option value="all">Tất cả</option>
+                            <option value="vocab">Từ vựng</option>
+                            <option value="kanji">Kanji</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quiz Content -->
+            <div class="p-8 flex-1 flex flex-col justify-center text-center" id="quiz-content-area">
+                <div class="mb-2 text-sm text-gray-400 uppercase tracking-wide font-semibold" id="quiz-instruction">...</div>
+
+                <!-- Type indicator for quiz -->
+                <div class="flex justify-center mb-4">
+                    <span id="quiz-type-badge" class="px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider hidden">TYPE</span>
+                </div>
+
+                <!-- Question Area -->
+                <div id="quiz-question" class="text-3xl font-bold text-gray-800 mb-6 min-h-[3rem] flex items-center justify-center flex-col gap-2">...</div>
+
+                <!-- LIFELINES (TRỢ GIÚP) - NEW FEATURE -->
+                <!-- Thêm ID cho container để dễ điều khiển visibility -->
+                <div id="lifelines-container" class="flex justify-center gap-4 mb-6 transition-opacity duration-300">
+                    <button onclick="quiz.use5050()" id="btn-lifeline-5050" class="px-4 py-1.5 bg-purple-100 text-purple-700 rounded-full text-sm font-bold border border-purple-200 hover:bg-purple-200 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                        <i class="fas fa-adjust"></i> 50/50
+                    </button>
+                    <button onclick="quiz.useReveal()" id="btn-lifeline-reveal" class="px-4 py-1.5 bg-yellow-100 text-yellow-700 rounded-full text-sm font-bold border border-yellow-200 hover:bg-yellow-200 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                        <i class="fas fa-lightbulb"></i> Hiện đáp án
+                    </button>
+                </div>
+
+                <!-- Multiple Choice Options -->
+                <div id="quiz-options" class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                    <!-- Options generated by JS -->
+                </div>
+
+                <!-- Feedback -->
+                <div id="quiz-feedback" class="mt-6 hidden">
+                    <div class="p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4" id="feedback-box">
+                        <div class="text-left w-full sm:w-auto">
+                            <div id="fb-text" class="text-lg font-bold"></div>
+                            <div id="fb-subtext" class="text-sm"></div>
+                        </div>
+                        <button onclick="quiz.nextQuestion()" id="btn-next-question" class="w-full sm:w-auto px-6 py-2 bg-white text-gray-800 font-bold rounded shadow hover:bg-gray-100 transition whitespace-nowrap">
+                            Tiếp tục <i class="fas fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="quiz-empty" class="hidden p-10 text-center flex-1 flex flex-col items-center justify-center">
+                <div class="text-6xl text-green-500 mb-4 animate-bounce"><i class="fas fa-trophy"></i></div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Tuyệt vời!</h3>
+                <p class="text-gray-600 mb-6" id="quiz-empty-msg">Bạn đã hoàn thành bộ thẻ này.</p>
+                <button onclick="db.resetAllProgress(); app.switchView('quiz')" class="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow-lg transition">
+                    <i class="fas fa-redo mr-2"></i> Reset để học lại từ đầu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW: STATS (Dữ liệu) -->
+    <div id="view-stats" class="view-section hidden max-w-5xl mx-auto fade-in">
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <!-- Data Header -->
+            <div class="p-4 border-b bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-4">
+                <h2 class="text-lg font-bold text-gray-700 flex items-center gap-2">
+                    <i class="fas fa-database"></i> Quản lý Dữ liệu
+                </h2>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Filter Stats -->
+                    <div class="flex items-center gap-2 bg-white border rounded px-2 py-1 shadow-sm">
+                        <span class="text-xs text-gray-500 uppercase font-bold"><i class="fas fa-filter"></i> Lọc:</span>
+                        <select id="stats-filter-select" onchange="stats.changeFilter(this.value)" class="text-sm border-none p-0 focus:ring-0 text-indigo-700 font-medium cursor-pointer">
+                            <option value="all">Tất cả</option>
+                            <option value="vocab">Từ vựng</option>
+                            <option value="kanji">Kanji</option>
+                        </select>
+                    </div>
+
+                    <!-- CSV Controls -->
+                    <div class="flex items-center gap-2">
+                        <button onclick="csvService.exportData()" class="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 border border-green-300 transition" title="Tải file CSV về máy">
+                            <i class="fas fa-file-export"></i> Xuất (Cập nhật)
+                        </button>
+                        <label class="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 border border-blue-300 transition cursor-pointer" title="Nạp dữ liệu từ file CSV">
+                            <i class="fas fa-file-import"></i> Nhập (Thêm vào)
+                            <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="csvService.importData(this)">
+                        </label>
+                    </div>
+
+                    <!-- Danger Zone -->
+                    <div class="flex items-center gap-2 border-l pl-3 ml-1">
+                        <button onclick="db.resetAllProgress()" class="text-sm px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 border border-yellow-300 transition" title="Học lại từ đầu">
+                            <i class="fas fa-history"></i> Reset
+                        </button>
+                        <button onclick="db.clearAllData()" class="text-sm px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 border border-red-300 transition" title="Xóa toàn bộ">
+                            <i class="fas fa-trash"></i> Xóa
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                    <tr class="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider">
+                        <th class="p-4 border-b w-24">Loại</th>
+                        <th class="p-4 border-b">Thuật ngữ</th>
+                        <th class="p-4 border-b">Nghĩa</th>
+                        <th class="p-4 border-b text-center">Streak</th>
+                        <th class="p-4 border-b text-center">Trạng thái</th>
+                        <th class="p-4 border-b text-right"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="stats-table-body" class="text-sm text-gray-700">
+                    <!-- JS Render -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="stats-empty" class="p-8 text-center text-gray-500 hidden">
+                <div class="mb-4">
+                    <i class="fas fa-folder-open text-4xl text-gray-300"></i>
+                </div>
+                <p>Chưa có dữ liệu.</p>
+                <div class="mt-4 flex justify-center gap-4">
+                    <button onclick="app.switchView('import')" class="text-indigo-600 hover:underline">Nhập thủ công</button>
+                    <span class="text-gray-300">|</span>
+                    <label class="text-indigo-600 hover:underline cursor-pointer">
+                        Nhập từ file CSV
+                        <input type="file" accept=".csv" class="hidden" onchange="csvService.importData(this)">
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<!-- Toast Notification -->
+<div id="toast" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3">
+    <i class="fas fa-info-circle"></i>
+    <span id="toast-message">Thông báo</span>
+</div>
+
+<script>
+    /**
+     * DB SERVICE
+     */
+    const db = {
+        key: 'kanji_master_db',
+
+        getAll: function() {
+            const data = localStorage.getItem(this.key);
+            return data ? JSON.parse(data) : [];
+        },
+
+        save: function(data) {
+            localStorage.setItem(this.key, JSON.stringify(data));
+            this.notifyObservers();
+        },
+
+        // LOGIC THÊM MỚI (CHỐNG TRÙNG LẶP)
+        addBulk: function(items) {
+            const currentData = this.getAll();
+            const newUniqueItems = [];
+
+            items.forEach(newItem => {
+                // Kiểm tra xem đã có từ này chưa (theo Term và Type)
+                const exists = currentData.some(existing =>
+                    existing.term.toLowerCase() === newItem.term.toLowerCase() &&
+                    existing.type === newItem.type
+                );
+
+                if (!exists) {
+                    newUniqueItems.push(newItem);
+                }
+            });
+
+            if (newUniqueItems.length > 0) {
+                const newData = currentData.concat(newUniqueItems);
+                this.save(newData);
+                ui.showToast(`Đã thêm ${newUniqueItems.length} thẻ mới (Bỏ qua ${items.length - newUniqueItems.length} thẻ trùng)!`);
+            } else {
+                ui.showToast("Dữ liệu đã tồn tại, không có từ mới nào được thêm.");
+            }
+        },
+
+        updateStreak: function(id, isCorrect) {
+            const data = this.getAll();
+            const item = data.find(i => i.id === id);
+            if (item) {
+                if (isCorrect) item.streak += 1;
+                else item.streak = 0;
+                this.save(data);
+            }
+        },
+
+        toggleLearned: function(id, status) {
+            const data = this.getAll();
+            const item = data.find(i => i.id === id);
+            if (item) {
+                item.isLearned = status;
+                if(status) item.streak = 100;
+                else item.streak = 0;
+                this.save(data);
+            }
+            return item;
+        },
+
+        resetAllProgress: function() {
+            if(!confirm("Bạn có chắc muốn reset lại?")) return;
+            const data = this.getAll();
+            data.forEach(item => { item.streak = 0; item.isLearned = false; });
+            this.save(data);
+            ui.showToast("Đã reset!");
+            app.refreshCurrentView();
+        },
+
+        clearAllData: function() {
+            if(!confirm("CẢNH BÁO: Xóa toàn bộ dữ liệu?")) return;
+            localStorage.removeItem(this.key);
+            this.save([]);
+            ui.showToast("Đã xóa sạch dữ liệu.");
+            app.refreshCurrentView();
+        },
+
+        deleteItem: function(id) {
+            let data = this.getAll();
+            data = data.filter(i => i.id !== id);
+            this.save(data);
+            app.refreshCurrentView();
+        },
+
+        notifyObservers: function() { stats.render(); }
+    };
+
+    /**
+     * CSV SERVICE: Xử lý file
+     */
+    const csvService = {
+        fileName: 'kanji_master_data.csv',
+
+        // Xuất dữ liệu ra file CSV
+        exportData: function() {
+            const data = db.getAll();
+            if (data.length === 0) {
+                ui.showToast("Không có dữ liệu để xuất!");
+                return;
+            }
+
+            ui.showToast("Đang tạo file... Hãy lưu đè lên file cũ để cập nhật.");
+
+            // Header CSV
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            csvContent += "Type,Term,Definition,Streak,IsLearned\n";
+
+            data.forEach(item => {
+                const type = (item.type || 'vocab').replace(/"/g, '""');
+                const term = item.term.replace(/"/g, '""');
+                let def = item.definition.replace(/"/g, '""').replace(/(\r\n|\n|\r)/gm, " ");
+
+                csvContent += `"${type}","${term}","${def}",${item.streak},${item.isLearned}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", this.fileName); // Tải xuống với tên file cố định
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        },
+
+        // TỰ ĐỘNG NẠP CSV (Cần Web Server hoặc config browser)
+        tryAutoLoad: async function() {
+            // Chỉ hiện thông báo trong console để tránh làm phiền nếu chạy file://
+            console.log("Đang thử tìm file CSV cùng thư mục...");
+            try {
+                const response = await fetch(this.fileName);
+
+                if (!response.ok) {
+                    throw new Error("Không tìm thấy file hoặc lỗi mạng");
+                }
+
+                const text = await response.text();
+                // Process CSV và chỉ thêm các từ CHƯA CÓ trong DB
+                const count = this.processCSVText(text);
+
+                if (count > 0) {
+                    ui.showToast(`Đã tự động tìm thấy file và thêm ${count} từ mới.`);
+                    app.switchView('flashcard');
+                } else if (text.length > 0) {
+                    // File có dữ liệu nhưng trùng hết
+                    console.log("File CSV tồn tại nhưng dữ liệu đã có trong DB.");
+                }
+
+            } catch (e) {
+                console.warn("Auto-load failed (Có thể do chạy file:// hoặc không có file):", e);
+                // Không làm gì cả, để user tự nhập
+            }
+        },
+
+        // Nhập dữ liệu từ file Input (Thủ công)
+        importData: function(inputElement) {
+            const file = inputElement.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                const count = this.processCSVText(text); // Sử dụng hàm chung
+                if (count >= 0) { // count có thể là 0 nếu trùng hết, nhưng process thành công
+                    // Toast đã được hiện trong db.addBulk
+                    app.switchView('stats');
+                } else {
+                    alert("Lỗi đọc file CSV. Kiểm tra định dạng.");
+                }
+                inputElement.value = '';
+            };
+            reader.readAsText(file);
+        },
+
+        // Hàm xử lý text CSV chung
+        processCSVText: function(text) {
+            const lines = text.split('\n');
+            const newItems = [];
+            let headerSkipped = false;
+
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                // Bỏ qua dòng tiêu đề
+                if (!headerSkipped && line.toLowerCase().includes("type,term")) {
+                    headerSkipped = true;
+                    return;
+                }
+
+                // Parse CSV đơn giản
+                const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+
+                if (matches && matches.length >= 3) {
+                    const type = matches[0].replace(/^"|"$/g, '');
+                    const term = matches[1].replace(/^"|"$/g, '');
+                    const def = matches[2].replace(/^"|"$/g, '');
+                    const streak = matches[3] ? parseInt(matches[3].replace(/^"|"$/g, '')) : 0;
+                    const isLearned = matches[4] ? (matches[4].replace(/^"|"$/g, '') === 'true') : false;
+
+                    newItems.push({
+                        id: Date.now() + Math.random().toString(36).substr(2, 9),
+                        type: type,
+                        term: term,
+                        definition: def,
+                        streak: streak || 0,
+                        isLearned: isLearned,
+                        dateAdded: new Date().toISOString()
+                    });
+                }
+            });
+
+            if (newItems.length > 0) {
+                // Logic Deduplication nằm trong db.addBulk
+                db.addBulk(newItems);
+                return newItems.length; // Trả về số lượng tìm thấy (không phải số lượng thêm thực tế)
+            }
+            return 0;
+        }
+    };
+
+    /**
+     * IMPORTER
+     */
+    const importer = {
+        processImport: function() {
+            const raw = document.getElementById('raw-input').value;
+            const delimiter = document.getElementById('delimiter-select').value;
+            const typeRadio = document.querySelector('input[name="import-type"]:checked');
+            const type = typeRadio ? typeRadio.value : 'vocab';
+
+            const lines = raw.split('\n');
+
+            let newItems = [];
+
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                let parts;
+                if (delimiter === 'tab') parts = line.split('\t');
+                else parts = line.split(delimiter);
+
+                parts = parts.map(p => p.trim()).filter(p => p !== "");
+
+                if (parts.length < 2) return;
+
+                const term = parts[0];
+                let definition = "";
+
+                if (parts.length >= 3) {
+                    definition = `<span class="text-gray-500 italic text-sm block mb-1">${parts[1]}</span>` + parts.slice(2).join(", ");
+                } else {
+                    definition = parts.slice(1).join(", ");
+                }
+
+                if (term && definition) {
+                    newItems.push({
+                        id: Date.now() + Math.random().toString(36).substr(2, 9),
+                        type: type,
+                        term: term,
+                        definition: definition,
+                        streak: 0,
+                        isLearned: false,
+                        dateAdded: new Date().toISOString()
+                    });
+                }
+            });
+
+            if (newItems.length > 0) {
+                db.addBulk(newItems);
+                document.getElementById('raw-input').value = '';
+                app.switchView('flashcard');
+            } else {
+                alert('Không đọc được dữ liệu. Vui lòng kiểm tra dấu ngăn cách!');
+            }
+        },
+
+        clearInput: function() {
+            document.getElementById('raw-input').value = '';
+        }
+    };
+
+    /**
+     * FLASHCARD LOGIC
+     */
+    const flashcard = {
+        allItems: [],
+        filteredItems: [],
+        currentIndex: 0,
+        isFlipped: false,
+        filterType: 'all',
+
+        init: function() {
+            this.filterType = document.getElementById('flashcard-filter').value;
+            this.allItems = db.getAll();
+            this.applyFilter();
+            this.render();
+        },
+
+        changeFilter: function(newType) {
+            this.filterType = newType;
+            this.currentIndex = 0;
+            this.applyFilter();
+            this.render();
+        },
+
+        applyFilter: function() {
+            if (this.filterType === 'all') {
+                this.filteredItems = this.allItems;
+            } else {
+                this.filteredItems = this.allItems.filter(item => {
+                    const itemType = item.type || 'vocab';
+                    return itemType === this.filterType;
+                });
+            }
+        },
+
+        render: function() {
+            const cardInner = document.getElementById('card-inner');
+            const badge = document.getElementById('card-type-badge');
+
+            this.isFlipped = false;
+            cardInner.classList.remove('is-flipped');
+
+            if (this.filteredItems.length === 0) {
+                document.getElementById('card-term').innerText = "Trống";
+                document.getElementById('card-def').innerText = "Không có thẻ nào loại này.";
+                document.getElementById('fc-progress').innerText = "0 / 0";
+                badge.className = "hidden";
+                return;
+            }
+
+            const currentItem = this.filteredItems[this.currentIndex];
+            const itemType = currentItem.type || 'vocab';
+
+            document.getElementById('card-term').innerText = currentItem.term;
+            document.getElementById('card-def').innerHTML = currentItem.definition;
+            document.getElementById('fc-progress').innerText = `${this.currentIndex + 1} / ${this.filteredItems.length}`;
+
+            badge.className = `absolute top-4 left-4 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider ${itemType === 'kanji' ? 'badge-kanji' : 'badge-vocab'}`;
+            badge.innerText = itemType;
+
+            const btnLearn = document.getElementById('btn-mark-learned');
+            if (currentItem.isLearned) {
+                btnLearn.classList.add('bg-green-100', 'border-green-600');
+                btnLearn.innerHTML = '<i class="fas fa-check-double"></i> Đã thuộc (Bỏ đánh dấu)';
+            } else {
+                btnLearn.classList.remove('bg-green-100', 'border-green-600');
+                btnLearn.innerHTML = '<i class="fas fa-check"></i> Đánh dấu đã thuộc';
+            }
+        },
+
+        next: function() {
+            if (this.filteredItems.length === 0) return;
+            this.currentIndex = (this.currentIndex + 1) % this.filteredItems.length;
+            this.render();
+        },
+
+        prev: function() {
+            if (this.filteredItems.length === 0) return;
+            this.currentIndex = (this.currentIndex - 1 + this.filteredItems.length) % this.filteredItems.length;
+            this.render();
+        },
+
+        flip: function() {
+            this.isFlipped = !this.isFlipped;
+            document.getElementById('card-inner').classList.toggle('is-flipped');
+        },
+
+        markLearned: function() {
+            if (this.filteredItems.length === 0) return;
+            const item = this.filteredItems[this.currentIndex];
+            db.toggleLearned(item.id, !item.isLearned);
+            item.isLearned = !item.isLearned;
+            this.render();
+            ui.showToast(item.isLearned ? "Đã đánh dấu thuộc!" : "Đã bỏ đánh dấu thuộc.");
+        }
+    };
+
+    /**
+     * QUIZ LOGIC
+     */
+    const quiz = {
+        currentItem: null,
+        isAnswering: true,
+        mode: 'def_to_term',
+        filterType: 'all',
+
+        init: function() {
+            this.mode = document.getElementById('quiz-mode-select').value;
+            this.filterType = document.getElementById('quiz-filter-select').value;
+            this.nextQuestion();
+        },
+
+        changeMode: function(newMode) {
+            this.mode = newMode;
+            this.nextQuestion();
+        },
+
+        changeFilter: function(newType) {
+            this.filterType = newType;
+            this.nextQuestion();
+        },
+
+        renderLayout: function(count) {
+            const contentArea = document.getElementById('quiz-content-area');
+            const emptyArea = document.getElementById('quiz-empty');
+            const progress = document.getElementById('quiz-progress');
+            const instruction = document.getElementById('quiz-instruction');
+            const emptyMsg = document.getElementById('quiz-empty-msg');
+
+            progress.innerText = `${count} từ cần ôn`;
+
+            if (count === 0) {
+                contentArea.classList.add('hidden');
+                emptyArea.classList.remove('hidden');
+                if (this.filterType !== 'all') {
+                    emptyMsg.innerText = `Bạn đã hoàn thành hết các thẻ thuộc loại "${this.filterType.toUpperCase()}".`;
+                } else {
+                    emptyMsg.innerText = "Bạn đã thuộc hết các từ (Streak đạt 3/3).";
+                }
+            } else {
+                contentArea.classList.remove('hidden');
+                emptyArea.classList.add('hidden');
+
+                if(this.mode === 'def_to_term') {
+                    instruction.innerText = "Chọn THUẬT NGỮ (Term) tương ứng:";
+                } else {
+                    instruction.innerText = "Chọn ĐỊNH NGHĨA (Definition) tương ứng:";
+                }
+            }
+        },
+
+        // --- LIFELINES FUNCTIONS (NEW) ---
+
+        resetLifelines: function() {
+            const btn5050 = document.getElementById('btn-lifeline-5050');
+            const btnReveal = document.getElementById('btn-lifeline-reveal');
+
+            // Chỉ hiện trợ giúp nếu streak <= 1 (mới học hoặc chưa thuộc hẳn)
+            // Nếu streak >= 2 (sắp thuộc) thì ẩn đi
+            const shouldShow = this.currentItem && this.currentItem.streak <= 1;
+
+            if (shouldShow) {
+                btn5050.disabled = false;
+                btnReveal.disabled = false;
+                // Dùng visibility để tránh nhảy layout
+                btn5050.parentElement.style.visibility = 'visible';
+                btn5050.parentElement.style.opacity = '1';
+            } else {
+                btn5050.disabled = true;
+                btnReveal.disabled = true;
+                btn5050.parentElement.style.visibility = 'hidden';
+                btn5050.parentElement.style.opacity = '0';
+            }
+        },
+
+        disableLifelines: function() {
+            const btn5050 = document.getElementById('btn-lifeline-5050');
+            const btnReveal = document.getElementById('btn-lifeline-reveal');
+
+            btn5050.disabled = true;
+            btnReveal.disabled = true;
+        },
+
+        use5050: function() {
+            // Chỉ dùng được nếu đang trả lời
+            if (!this.isAnswering) return;
+
+            const btn5050 = document.getElementById('btn-lifeline-5050');
+            btn5050.disabled = true; // Disable ngay sau khi bấm
+
+            const optionsContainer = document.getElementById('quiz-options');
+            const buttons = Array.from(optionsContainer.getElementsByTagName('button'));
+
+            // Tìm các nút sai (data-is-correct="false")
+            const wrongButtons = buttons.filter(btn => btn.dataset.isCorrect === "false");
+
+            // Random và ẩn 2 nút sai
+            if (wrongButtons.length >= 2) {
+                // Shuffle
+                wrongButtons.sort(() => Math.random() - 0.5);
+                // Ẩn 2 cái đầu tiên
+                wrongButtons.slice(0, 2).forEach(btn => {
+                    btn.classList.add('option-hidden');
+                });
+            } else {
+                // Trường hợp ít hơn 2 nút sai (hiếm khi xảy ra với logic hiện tại nhưng cứ handle)
+                wrongButtons.forEach(btn => btn.classList.add('option-hidden'));
+            }
+        },
+
+        useReveal: function() {
+            // Chỉ dùng được nếu đang trả lời
+            if (!this.isAnswering) return;
+
+            const btnReveal = document.getElementById('btn-lifeline-reveal');
+            btnReveal.disabled = true; // Disable ngay sau khi bấm
+
+            const optionsContainer = document.getElementById('quiz-options');
+            const buttons = Array.from(optionsContainer.getElementsByTagName('button'));
+
+            // Tìm nút đúng
+            const correctButton = buttons.find(btn => btn.dataset.isCorrect === "true");
+
+            if (correctButton) {
+                correctButton.classList.add('option-hint');
+            }
+        },
+
+        // ---------------------------------
+
+        nextQuestion: function() {
+            const allItems = db.getAll();
+            const candidates = allItems.filter(i => {
+                const itemType = i.type || 'vocab';
+                const matchesType = (this.filterType === 'all') || (itemType === this.filterType);
+                return i.streak < 3 && !i.isLearned && matchesType;
+            });
+
+            this.renderLayout(candidates.length);
+            if (candidates.length === 0) return;
+
+            let nextItem;
+            if (candidates.length > 1 && this.currentItem) {
+                const others = candidates.filter(i => i.id !== this.currentItem.id);
+                nextItem = others[Math.floor(Math.random() * others.length)];
+            } else {
+                nextItem = candidates[Math.floor(Math.random() * candidates.length)];
+            }
+
+            this.currentItem = nextItem;
+            this.isAnswering = true;
+            this.resetLifelines(); // Reset trợ giúp khi sang câu mới
+
+            const qDiv = document.getElementById('quiz-question');
+            const badge = document.getElementById('quiz-type-badge');
+            document.getElementById('quiz-feedback').classList.add('hidden');
+
+            const curType = this.currentItem.type || 'vocab';
+            badge.className = `px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${curType === 'kanji' ? 'badge-kanji' : 'badge-vocab'}`;
+            badge.innerText = curType;
+            badge.classList.remove('hidden');
+
+            if (this.mode === 'def_to_term') {
+                qDiv.innerHTML = this.currentItem.definition;
+            } else {
+                qDiv.innerHTML = this.currentItem.term;
+            }
+
+            this.renderOptions(this.currentItem, allItems);
+        },
+
+        renderOptions: function(correctItem, allItems) {
+            const optionsContainer = document.getElementById('quiz-options');
+            optionsContainer.innerHTML = '';
+
+            const currentType = correctItem.type || 'vocab';
+            let potentialDistractors = allItems.filter(i => {
+                const t = i.type || 'vocab';
+                return i.id !== correctItem.id && t === currentType;
+            });
+
+            if (potentialDistractors.length < 3) {
+                potentialDistractors = allItems.filter(i => i.id !== correctItem.id);
+            }
+
+            potentialDistractors.sort(() => Math.random() - 0.5);
+            const distractors = potentialDistractors.slice(0, 3);
+
+            let options = [correctItem, ...distractors];
+            options.sort(() => Math.random() - 0.5);
+
+            options.forEach(opt => {
+                const isCorrect = (opt.id === correctItem.id);
+                const btn = document.createElement('button');
+                btn.className = "quiz-option bg-white border-2 border-gray-200 text-gray-700 p-4 rounded-lg font-medium text-lg hover:border-indigo-400 focus:outline-none flex flex-col items-center justify-center h-full min-h-[80px]";
+
+                // Đánh dấu nút đúng/sai để dùng cho Lifelines
+                btn.dataset.isCorrect = isCorrect;
+
+                if (this.mode === 'def_to_term') {
+                    btn.innerText = opt.term;
+                } else {
+                    btn.innerHTML = opt.definition;
+                }
+
+                btn.onclick = () => this.checkAnswer(opt, btn);
+                optionsContainer.appendChild(btn);
+            });
+        },
+
+        checkAnswer: function(selectedItem, btnElement) {
+            if (!this.isAnswering) return;
+            this.isAnswering = false;
+
+            // Vô hiệu hóa lifelines ngay lập tức vì câu hỏi đã được trả lời
+            this.disableLifelines();
+
+            const isCorrect = selectedItem.id === this.currentItem.id;
+
+            db.updateStreak(this.currentItem.id, isCorrect);
+
+            const optionsContainer = document.getElementById('quiz-options');
+            const buttons = optionsContainer.getElementsByTagName('button');
+
+            Array.from(buttons).forEach(b => {
+                b.disabled = true;
+                b.classList.remove('hover:border-indigo-400', 'option-hint'); // Xóa hint nếu có
+
+                let isButtonCorrectOption = false;
+                if(this.mode === 'def_to_term') {
+                    isButtonCorrectOption = (b.innerText === this.currentItem.term);
+                } else {
+                    isButtonCorrectOption = (b.innerHTML === this.currentItem.definition);
+                }
+
+                if (isButtonCorrectOption) {
+                    b.classList.add('bg-green-100', 'border-green-500', 'text-green-800');
+                    b.classList.remove('option-hidden'); // Hiện lại nếu bị ẩn bởi 50/50
+                    b.style.opacity = "1";
+                } else if (b === btnElement && !isCorrect) {
+                    b.classList.add('bg-red-100', 'border-red-500', 'text-red-800');
+                } else {
+                    b.classList.add('opacity-50');
+                }
+            });
+
+            const fb = document.getElementById('quiz-feedback');
+            const fbBox = document.getElementById('feedback-box');
+            const fbText = document.getElementById('fb-text');
+            const fbSub = document.getElementById('fb-subtext');
+            const btnNext = document.getElementById('btn-next-question');
+
+            fb.classList.remove('hidden');
+
+            if (isCorrect) {
+                fbBox.className = "p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4 bg-green-50 border border-green-200";
+                fbText.innerHTML = '<span class="text-green-700">Chính xác! <i class="fas fa-check-circle"></i></span>';
+                fbSub.innerText = `Streak: ${this.currentItem.streak + 1}/3`;
+                btnNext.className = "w-full sm:w-auto px-6 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 transition whitespace-nowrap";
+            } else {
+                fbBox.className = "p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4 bg-red-50 border border-red-200";
+                fbText.innerHTML = '<span class="text-red-700">Sai rồi! <i class="fas fa-times-circle"></i></span>';
+                fbSub.innerText = "Sẽ hỏi lại câu này.";
+                btnNext.className = "w-full sm:w-auto px-6 py-2 bg-red-600 text-white font-bold rounded shadow hover:bg-red-700 transition whitespace-nowrap";
+            }
+            btnNext.focus();
+        }
+    };
+
+    /**
+     * STATS LOGIC
+     */
+    const stats = {
+        filterType: 'all',
+
+        render: function() {
+            const allData = db.getAll();
+            // Lấy giá trị filter, kiểm tra nếu element tồn tại
+            const filterEl = document.getElementById('stats-filter-select');
+            this.filterType = filterEl ? filterEl.value : 'all';
+
+            // Filter
+            let data = allData;
+            if (this.filterType !== 'all') {
+                data = allData.filter(item => (item.type || 'vocab') === this.filterType);
+            }
+
+            const tbody = document.getElementById('stats-table-body');
+            const empty = document.getElementById('stats-empty');
+
+            if (!tbody || !empty) return; // Guard clause
+
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+
+            data.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.className = "border-b hover:bg-gray-50 transition";
+
+                let streakClass = item.streak >= 3 ? "bg-green-200 text-green-800" : (item.streak > 0 ? "bg-blue-100 text-blue-800" : "bg-gray-200 text-gray-700");
+                const statusText = item.isLearned ? '<span class="text-green-600 font-bold">Đã thuộc</span>' : (item.streak >= 3 ? '<span class="text-blue-600 font-bold">Xong</span>' : '<span class="text-yellow-600">Học</span>');
+
+                const itemType = item.type || 'vocab';
+                const typeBadge = `<span class="px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${itemType === 'kanji' ? 'badge-kanji' : 'badge-vocab'}">${itemType}</span>`;
+
+                row.innerHTML = `
+                        <td class="p-4 text-center">${typeBadge}</td>
+                        <td class="p-4 font-bold text-indigo-700">${item.term}</td>
+                        <td class="p-4 text-gray-600 truncate max-w-xs">${item.definition.replace(/<[^>]*>?/gm, '')}</td>
+                        <td class="p-4 text-center"><span class="px-2 py-1 rounded-full text-xs font-bold ${streakClass}">${item.streak}</span></td>
+                        <td class="p-4 text-center text-sm">${statusText}</td>
+                        <td class="p-4 text-right"><button onclick="db.deleteItem('${item.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button></td>
+                    `;
+                tbody.appendChild(row);
+            });
+        },
+
+        changeFilter: function(newVal) {
+            this.filterType = newVal;
+            this.render();
+        }
+    };
+
+    const app = {
+        currentView: 'import',
+        // ASYNC INIT để chờ fetch file nếu cần
+        init: async function() {
+            const data = db.getAll();
+
+            // Luôn thử tự động load để cập nhật nếu có file mới mà DB chưa có
+            // Tuy nhiên ưu tiên dữ liệu trong DB nếu có
+            await csvService.tryAutoLoad();
+
+            // Sau khi load xong (hoặc fail), check lại DB để chuyển view
+            const updatedData = db.getAll();
+            if (updatedData.length > 0) {
+                this.switchView('flashcard');
+            } else {
+                this.switchView('stats');
+                ui.showToast("Database trống. Hãy nhập liệu hoặc Import CSV.");
+            }
+        },
+        switchView: function(viewId) {
+            this.currentView = viewId;
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('text-indigo-200'));
+            const navBtn = document.getElementById(`nav-${viewId}`);
+            if (navBtn) navBtn.classList.add('text-indigo-200');
+
+            const viewEl = document.getElementById(`view-${viewId}`);
+            if (viewEl) viewEl.classList.remove('hidden');
+
+            if (viewId === 'flashcard') flashcard.init();
+            if (viewId === 'quiz') quiz.init();
+            if (viewId === 'stats') stats.render();
+        },
+        refreshCurrentView: function() { this.switchView(this.currentView); }
+    };
+
+    const ui = {
+        showToast: function(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-message').innerText = msg;
+            t.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 3000);
+        }
+    };
+
+    window.onload = function() { app.init(); };
+</script>
+</body>
+</html>
