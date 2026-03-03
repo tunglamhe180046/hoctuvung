@@ -11,6 +11,40 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 
+    <!-- Firebase (Firestore dùng chung data) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import {
+            getFirestore,
+            collection,
+            getDocs,
+            doc,
+            writeBatch
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAiBpKGVSmwiaXd3ZjVs3ZnQp0dDRFPdq0",
+            authDomain: "hoctiengnhat-c6dcb.firebaseapp.com",
+            projectId: "hoctiengnhat-c6dcb",
+            storageBucket: "hoctiengnhat-c6dcb.firebasestorage.app",
+            messagingSenderId: "476723615570",
+            appId: "1:476723615570:web:fcf0ec3ecd1716463f4c8b",
+            measurementId: "G-8Q4RZLB3HE"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const firestore = getFirestore(app);
+
+        // Expose Firestore cho script phía dưới dùng
+        window.__fs = {
+            firestore,
+            collection,
+            getDocs,
+            doc,
+            writeBatch
+        };
+    </script>
+
     <style>
         body {
             font-family: 'Roboto', 'Noto Sans JP', sans-serif;
@@ -458,19 +492,69 @@
 
 <script>
     /**
-     * DB SERVICE
+     * DB SERVICE - dùng Firestore + localStorage cache
      */
     const db = {
         key: 'kanji_master_db',
+        collectionName: 'cards',
 
+        // Đọc từ local cache (đồng bộ, không phải sửa code còn lại)
         getAll: function() {
             const data = localStorage.getItem(this.key);
             return data ? JSON.parse(data) : [];
         },
 
+        // Lưu vào local + đẩy nền lên Firestore
         save: function(data) {
             localStorage.setItem(this.key, JSON.stringify(data));
             this.notifyObservers();
+            this.pushToServer(data);
+        },
+
+        // Đồng bộ toàn bộ lên Firestore (ghi đè)
+        pushToServer: async function(data) {
+            try {
+                if (!window.__fs) return;
+                const { firestore, collection, getDocs, writeBatch, doc } = window.__fs;
+
+                const colRef = collection(firestore, this.collectionName);
+
+                // Xóa cũ
+                const snap = await getDocs(colRef);
+                const batch = writeBatch(firestore);
+                snap.forEach(d => batch.delete(d.ref));
+
+                // Ghi mới
+                data.forEach(item => {
+                    const ref = doc(colRef, item.id);
+                    batch.set(ref, item);
+                });
+
+                await batch.commit();
+                console.log('Đã đồng bộ Firestore.');
+            } catch (e) {
+                console.error('Lỗi sync Firestore:', e);
+            }
+        },
+
+        // Kéo data chung từ Firestore về local (gọi lúc init)
+        syncFromServer: async function() {
+            try {
+                if (!window.__fs) return;
+                const { firestore, collection, getDocs } = window.__fs;
+
+                const colRef = collection(firestore, this.collectionName);
+                const snap = await getDocs(colRef);
+                const items = snap.docs.map(d => d.data());
+
+                if (items.length > 0) {
+                    localStorage.setItem(this.key, JSON.stringify(items));
+                    this.notifyObservers();
+                    console.log('Đã sync từ Firestore về local.');
+                }
+            } catch (e) {
+                console.error('Lỗi tải dữ liệu Firestore:', e);
+            }
         },
 
         // LOGIC THÊM MỚI (CHỐNG TRÙNG LẶP)
@@ -479,10 +563,9 @@
             const newUniqueItems = [];
 
             items.forEach(newItem => {
-                // Kiểm tra xem đã có từ này chưa (theo Term và Type)
                 const exists = currentData.some(existing =>
                     existing.term.toLowerCase() === newItem.term.toLowerCase() &&
-                    existing.type === newItem.type
+                    (existing.type || 'vocab') === (newItem.type || 'vocab')
                 );
 
                 if (!exists) {
@@ -1170,13 +1253,17 @@
         currentView: 'import',
         // ASYNC INIT để chờ fetch file nếu cần
         init: async function() {
+            // 1. Kéo dữ liệu chung từ Firestore về local (nếu có)
+            if (db.syncFromServer) {
+                await db.syncFromServer();
+            }
+
             const data = db.getAll();
 
-            // Luôn thử tự động load để cập nhật nếu có file mới mà DB chưa có
-            // Tuy nhiên ưu tiên dữ liệu trong DB nếu có
+            // 2. Giữ logic auto-load CSV nếu bạn đặt file CSV cạnh site
             await csvService.tryAutoLoad();
 
-            // Sau khi load xong (hoặc fail), check lại DB để chuyển view
+            // 3. Chọn view ban đầu
             const updatedData = db.getAll();
             if (updatedData.length > 0) {
                 this.switchView('flashcard');
