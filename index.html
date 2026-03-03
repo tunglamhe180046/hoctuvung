@@ -538,19 +538,28 @@
         },
 
         // Kéo data chung từ Firestore về local (gọi lúc init)
+        // Đồng thời nếu Firestore đang trống nhưng máy hiện tại đã có dữ liệu cũ (local),
+        // thì đẩy dữ liệu local đó lên Firestore để các máy khác cùng dùng.
         syncFromServer: async function() {
             try {
                 if (!window.__fs) return;
                 const { firestore, collection, getDocs } = window.__fs;
+
+                const localData = this.getAll();
 
                 const colRef = collection(firestore, this.collectionName);
                 const snap = await getDocs(colRef);
                 const items = snap.docs.map(d => d.data());
 
                 if (items.length > 0) {
+                    // Ưu tiên dùng dữ liệu chung từ server
                     localStorage.setItem(this.key, JSON.stringify(items));
                     this.notifyObservers();
                     console.log('Đã sync từ Firestore về local.');
+                } else if (localData.length > 0) {
+                    // Server trống nhưng máy này đã có sẵn dữ liệu cũ -> đẩy lên server
+                    console.log('Firestore đang trống, đẩy dữ liệu local hiện tại lên server.');
+                    await this.pushToServer(localData);
                 }
             } catch (e) {
                 console.error('Lỗi tải dữ liệu Firestore:', e);
