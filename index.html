@@ -348,6 +348,15 @@
                             <option value="kanji">Kanji</option>
                         </select>
                     </div>
+
+                    <!-- Cấu hình số câu hỏi -->
+                    <div class="flex items-center gap-2 bg-white border rounded px-2 py-1 shadow-sm">
+                        <span class="text-xs text-gray-500 uppercase font-bold">Số câu:</span>
+                        <input id="quiz-question-count" type="number" min="1" class="w-20 text-sm border border-gray-200 rounded px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500" placeholder="20">
+                        <button onclick="quiz.startSessionFromUI()" class="text-xs md:text-sm px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition whitespace-nowrap">
+                            Bắt đầu
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -936,33 +945,54 @@
         isAnswering: true,
         mode: 'def_to_term',
         filterType: 'all',
+        sessionQuestions: [],
+        sessionIndex: 0,
+        sessionTotal: 0,
 
         init: function() {
             this.mode = document.getElementById('quiz-mode-select').value;
             this.filterType = document.getElementById('quiz-filter-select').value;
-            this.nextQuestion();
+            this.sessionQuestions = [];
+            this.sessionIndex = 0;
+            this.sessionTotal = 0;
+            const available = this.getAvailableToLearnCount();
+            this.renderLayout(available);
         },
 
         changeMode: function(newMode) {
             this.mode = newMode;
-            this.nextQuestion();
+            // Không reset session để người dùng có thể đổi kiểu câu hỏi trong cùng đề
+            if (this.sessionTotal > 0) {
+                this.showCurrentQuestion();
+            }
         },
 
         changeFilter: function(newType) {
             this.filterType = newType;
-            this.nextQuestion();
+            // Đổi loại thì reset lại đề
+            this.sessionQuestions = [];
+            this.sessionIndex = 0;
+            this.sessionTotal = 0;
+            const available = this.getAvailableToLearnCount();
+            this.renderLayout(available);
         },
 
-        renderLayout: function(count) {
+        renderLayout: function(availableCount) {
             const contentArea = document.getElementById('quiz-content-area');
             const emptyArea = document.getElementById('quiz-empty');
             const progress = document.getElementById('quiz-progress');
             const instruction = document.getElementById('quiz-instruction');
             const emptyMsg = document.getElementById('quiz-empty-msg');
 
-            progress.innerText = `${count} từ cần ôn`;
+            // Hiển thị tiến độ nếu đang có đề cố định
+            if (this.sessionTotal > 0) {
+                const current = Math.min(this.sessionIndex + 1, this.sessionTotal);
+                progress.innerText = `Câu ${current}/${this.sessionTotal}`;
+            } else {
+                progress.innerText = `${availableCount} từ cần ôn`;
+            }
 
-            if (count === 0) {
+            if (availableCount === 0 && this.sessionTotal === 0) {
                 contentArea.classList.add('hidden');
                 emptyArea.classList.remove('hidden');
                 if (this.filterType !== 'all') {
@@ -980,6 +1010,112 @@
                     instruction.innerText = "Chọn ĐỊNH NGHĨA (Definition) tương ứng:";
                 }
             }
+        },
+
+        getAvailableToLearnCount: function() {
+            const allItems = db.getAll();
+            const candidates = allItems.filter(i => {
+                const itemType = i.type || 'vocab';
+                const matchesType = (this.filterType === 'all') || (itemType === this.filterType);
+                return i.streak < 3 && !i.isLearned && matchesType;
+            });
+            return candidates.length;
+        },
+
+        startSessionFromUI: function() {
+            const input = document.getElementById('quiz-question-count');
+            let desired = parseInt(input.value, 10);
+            if (isNaN(desired) || desired <= 0) {
+                desired = 20;
+                ui.showToast('Số câu không hợp lệ, dùng mặc định 20.');
+            }
+            this.startSession(desired);
+        },
+
+        startSession: function(desiredCount) {
+            const allItems = db.getAll();
+            const questions = this.buildQuestionSet(desiredCount, allItems);
+
+            if (!questions || questions.length === 0) {
+                this.sessionQuestions = [];
+                this.sessionIndex = 0;
+                this.sessionTotal = 0;
+                this.renderLayout(0);
+                ui.showToast('Không có thẻ phù hợp để tạo đề.');
+                return;
+            }
+
+            this.sessionQuestions = questions;
+            this.sessionIndex = 0;
+            this.sessionTotal = questions.length;
+
+            if (this.sessionTotal < desiredCount) {
+                ui.showToast(`Chỉ tạo được ${this.sessionTotal} câu phù hợp (yêu cầu ${desiredCount}).`);
+            } else {
+                ui.showToast(`Đã tạo đề gồm ${this.sessionTotal} câu.`);
+            }
+
+            this.showCurrentQuestion();
+        },
+
+        buildQuestionSet: function(desiredCount, allItems) {
+            // desiredCount = số câu MỚI người dùng nhập
+            if (!allItems || allItems.length === 0) return [];
+
+            const baseCount = Math.max(desiredCount, 0);
+
+            const matchesType = (item) => {
+                const t = item.type || 'vocab';
+                return (this.filterType === 'all') || (t === this.filterType);
+            };
+
+            const neverDone = allItems.filter(i =>
+                matchesType(i) && i.streak === 0 && !i.isLearned
+            );
+
+            const inProgress = allItems.filter(i =>
+                matchesType(i) && i.streak > 0 && i.streak < 3 && !i.isLearned
+            );
+
+            const reviewCandidates = allItems.filter(i =>
+                matchesType(i) && (i.streak >= 3 || i.isLearned === true)
+            );
+
+            // Tính số câu ôn lại được cộng THÊM
+            let extraReviewCount = 0;
+            if (baseCount >= 20 && baseCount <= 39) {
+                extraReviewCount = 5;
+            } else if (baseCount >= 40 && baseCount <= 59) {
+                extraReviewCount = 10;
+            }
+
+            const shuffle = (arr) => arr
+                .map(v => ({ v, r: Math.random() }))
+                .sort((a, b) => a.r - b.r)
+                .map(x => x.v);
+
+            // 1. Chọn base câu mới/cần học
+            const neverDoneShuffled = shuffle(neverDone);
+            let baseSelected = neverDoneShuffled.slice(0, baseCount);
+
+            if (baseSelected.length < baseCount) {
+                const stillNeeded = baseCount - baseSelected.length;
+                const inProgressShuffled = shuffle(inProgress);
+                const extraFromInProgress = inProgressShuffled.slice(0, stillNeeded);
+                baseSelected = baseSelected.concat(extraFromInProgress);
+            }
+
+            // 2. Chọn câu review (đã thuộc)
+            const maxReview = Math.min(extraReviewCount, reviewCandidates.length);
+            const reviewShuffled = shuffle(reviewCandidates);
+            const reviewSelected = reviewShuffled.slice(0, maxReview);
+
+            // 3. Gộp lại
+            let combined = [...baseSelected, ...reviewSelected];
+            if (combined.length === 0) return [];
+
+            combined = shuffle(combined);
+            return combined;
         },
 
         // --- LIFELINES FUNCTIONS (NEW) ---
@@ -1060,27 +1196,30 @@
         },
 
         // ---------------------------------
+        // ---------------------------------
 
-        nextQuestion: function() {
-            const allItems = db.getAll();
-            const candidates = allItems.filter(i => {
-                const itemType = i.type || 'vocab';
-                const matchesType = (this.filterType === 'all') || (itemType === this.filterType);
-                return i.streak < 3 && !i.isLearned && matchesType;
-            });
+        showCurrentQuestion: function() {
+            const contentArea = document.getElementById('quiz-content-area');
+            const emptyArea = document.getElementById('quiz-empty');
+            const emptyMsg = document.getElementById('quiz-empty-msg');
 
-            this.renderLayout(candidates.length);
-            if (candidates.length === 0) return;
-
-            let nextItem;
-            if (candidates.length > 1 && this.currentItem) {
-                const others = candidates.filter(i => i.id !== this.currentItem.id);
-                nextItem = others[Math.floor(Math.random() * others.length)];
-            } else {
-                nextItem = candidates[Math.floor(Math.random() * candidates.length)];
+            if (this.sessionTotal === 0) {
+                const available = this.getAvailableToLearnCount();
+                this.renderLayout(available);
+                return;
             }
 
-            this.currentItem = nextItem;
+            if (this.sessionIndex >= this.sessionTotal) {
+                contentArea.classList.add('hidden');
+                emptyArea.classList.remove('hidden');
+                emptyMsg.innerText = `Bạn đã hoàn thành đề gồm ${this.sessionTotal} câu. Nhập số câu rồi bấm Bắt đầu để làm đề mới.`;
+                return;
+            }
+
+            this.currentItem = this.sessionQuestions[this.sessionIndex];
+            const allItems = db.getAll();
+
+            this.renderLayout(this.getAvailableToLearnCount());
             this.isAnswering = true;
             this.resetLifelines(); // Reset trợ giúp khi sang câu mới
 
@@ -1100,6 +1239,16 @@
             }
 
             this.renderOptions(this.currentItem, allItems);
+        },
+
+        nextQuestion: function() {
+            if (this.sessionTotal === 0) {
+                // Chưa có đề, tạo đề mặc định 20 câu
+                this.startSession(20);
+                return;
+            }
+            this.sessionIndex += 1;
+            this.showCurrentQuestion();
         },
 
         renderOptions: function(correctItem, allItems) {
