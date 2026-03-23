@@ -32,8 +32,8 @@
             measurementId: "G-8Q4RZLB3HE"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const firestore = getFirestore(app);
+        const firebaseApp = initializeApp(firebaseConfig);
+        const firestore = getFirestore(firebaseApp);
 
         // Expose Firestore cho script phía dưới dùng
         window.__fs = {
@@ -405,11 +405,16 @@
             <!-- Empty State -->
             <div id="quiz-empty" class="hidden p-10 text-center flex-1 flex flex-col items-center justify-center">
                 <div class="text-6xl text-green-500 mb-4 animate-bounce"><i class="fas fa-trophy"></i></div>
-                <h3 class="text-2xl font-bold text-gray-800 mb-2">Tuyệt vời!</h3>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Hoàn thành!</h3>
                 <p class="text-gray-600 mb-6" id="quiz-empty-msg">Bạn đã hoàn thành bộ thẻ này.</p>
-                <button onclick="db.resetAllProgress(); app.switchView('quiz')" class="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow-lg transition">
-                    <i class="fas fa-redo mr-2"></i> Reset để học lại từ đầu
-                </button>
+                <div id="quiz-empty-actions" class="hidden w-full flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center">
+                    <button onclick="quiz.startSessionFromUI()" class="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow-lg transition w-full sm:w-auto">
+                        <i class="fas fa-play mr-2"></i> Làm tiếp
+                    </button>
+                    <button onclick="quiz.exitToBlank()" class="px-6 py-2 bg-white text-gray-800 rounded hover:bg-gray-100 shadow-lg transition border border-gray-200 w-full sm:w-auto">
+                        Không, về màn hình trống
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -989,6 +994,7 @@
             const progress = document.getElementById('quiz-progress');
             const instruction = document.getElementById('quiz-instruction');
             const emptyMsg = document.getElementById('quiz-empty-msg');
+            const actions = document.getElementById('quiz-empty-actions');
 
             // Hiển thị tiến độ nếu đang có đề cố định
             const targetIds = Object.keys(this.sessionTargetCorrect || {});
@@ -1003,6 +1009,7 @@
             if (availableCount === 0 && this.sessionTotal === 0) {
                 contentArea.classList.add('hidden');
                 emptyArea.classList.remove('hidden');
+                if (actions) actions.classList.add('hidden');
                 if (this.filterType !== 'all') {
                     emptyMsg.innerText = `Bạn đã hoàn thành hết các thẻ thuộc loại "${this.filterType.toUpperCase()}".`;
                 } else {
@@ -1011,6 +1018,7 @@
             } else {
                 contentArea.classList.remove('hidden');
                 emptyArea.classList.add('hidden');
+                if (actions) actions.classList.add('hidden');
 
                 if(this.mode === 'def_to_term') {
                     instruction.innerText = "Chọn THUẬT NGỮ (Term) tương ứng:";
@@ -1177,6 +1185,25 @@
             btnReveal.disabled = true;
         },
 
+        exitToBlank: function() {
+            // Ẩn toàn bộ nội dung quiz để hiển thị "màn hình trống"
+            const contentArea = document.getElementById('quiz-content-area');
+            const emptyArea = document.getElementById('quiz-empty');
+            const actions = document.getElementById('quiz-empty-actions');
+
+            if (contentArea) contentArea.classList.add('hidden');
+            if (emptyArea) emptyArea.classList.add('hidden');
+            if (actions) actions.classList.add('hidden');
+
+            this.currentItem = null;
+            this.isAnswering = false;
+            this.sessionQuestions = [];
+            this.sessionIndex = 0;
+            this.sessionTotal = 0;
+            this.sessionCorrectCounts = {};
+            this.sessionTargetCorrect = {};
+        },
+
         use5050: function() {
             // Chỉ dùng được nếu đang trả lời
             if (!this.isAnswering) return;
@@ -1229,6 +1256,7 @@
             const contentArea = document.getElementById('quiz-content-area');
             const emptyArea = document.getElementById('quiz-empty');
             const emptyMsg = document.getElementById('quiz-empty-msg');
+            const actions = document.getElementById('quiz-empty-actions');
 
             if (!this.sessionQuestions || this.sessionQuestions.length === 0) {
                 const available = this.getAvailableToLearnCount();
@@ -1246,7 +1274,8 @@
             if (remaining.length === 0) {
                 contentArea.classList.add('hidden');
                 emptyArea.classList.remove('hidden');
-                emptyMsg.innerText = `Bạn đã hoàn thành tất cả từ trong đề này. Nhập số câu rồi bấm Bắt đầu để làm đề mới.`;
+                if (actions) actions.classList.remove('hidden');
+                emptyMsg.innerText = `Bạn đã hoàn thành xong! Bạn có muốn làm tiếp không?`;
                 return;
             }
 
